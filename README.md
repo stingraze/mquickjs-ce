@@ -4,6 +4,8 @@ Ported by Tsubasa Kato (@_stingraze on X / Twitter) 12/28/2025
 
 Ported using ChatGPT 5.2 Thinking. Needs further testing. Only basic programs has been tested. I think the complex code in test will fail at this stage.
 
+Needs CeGCC to compile. (9.3x)
+
 ## Introduction
 
 MicroQuickJS (aka. MQuickJS) is a JavaScript engine targeted at
