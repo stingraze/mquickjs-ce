@@ -1,0 +1,95 @@
+# Makefile.wince - CeGCC (Windows CE .NET 4.1 ARM) build for bellard/mquickjs
+#
+# Usage:
+#   export PATH=/home/builder/cegcc/bin:$PATH
+#   make -f Makefile.wince clean all
+#
+# Notes:
+# - This Makefile intentionally builds the *generator* programs (mqjs_stdlib, example_stdlib)
+#   with HOST_CC so they can run on the build machine to produce headers.
+# - The produced target binaries (mqjs.exe, example.exe) are Windows CE ARM executables.
+#
+# Customize if needed:
+CEGCC_BIN ?= /home/builder/cegcc/bin
+CROSS_PREFIX ?= $(CEGCC_BIN)/arm-mingw32ce-
+
+HOST_CC ?= gcc
+CC      := $(CROSS_PREFIX)gcc
+AR      := $(CROSS_PREFIX)ar
+STRIP   := $(CROSS_PREFIX)strip
+
+EXE := .exe
+
+# Windows CE version macros: 4.1 -> 0x0410
+WINCE_VER ?= 0x0410
+
+# Conservative flags for WinCE/newlib/cegcc
+COMMON_CFLAGS := -Wall -Wextra -Os -ffunction-sections -fdata-sections \
+  -DWIN32 -D_WIN32_WCE=$(WINCE_VER) -DUNDER_CE -DUNICODE -D_UNICODE -DCEGCC -D__CEGCC__ \
+  -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS \
+  -I. -Iwince
+
+# CeGCC sometimes lacks full pthread/signal/unistd; we avoid them
+CFLAGS   := $(COMMON_CFLAGS)
+HOST_CFLAGS := -Wall -Wextra -O2 -I.
+
+LDFLAGS  := -Wl,--gc-sections
+HOST_LDFLAGS :=
+
+# Windows CE system libs: coredll is the main one; ws2 is often present but unused here.
+LIBS := -lcoredll
+
+# Force 32-bit bytecode generation from host-side generators on 64-bit hosts
+MQJS_BUILD_FLAGS := -m32
+
+# Programs
+PROGS := mqjs$(EXE) example$(EXE)
+
+all: $(PROGS)
+
+# --- Source lists ---
+# We avoid readline_tty.o for WinCE (tty/raw mode is not supported)
+MQJS_OBJS := mqjs.o readline.o wince/readline_tty_wince.o wince/wince_compat.o mquickjs.o dtoa.o libm.o cutils.o wince/stdio_compat.o
+EXAMPLE_OBJS := example.o wince/wince_compat.o mquickjs.o dtoa.o libm.o cutils.o wince/stdio_compat.o
+
+mqjs$(EXE): $(MQJS_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+example$(EXE): $(EXAMPLE_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+# --- Host-side generators (run on build machine) ---
+mqjs_stdlib: mqjs_stdlib.host.o mquickjs_build.host.o
+	$(HOST_CC) $(HOST_LDFLAGS) -o $@ $^
+
+example_stdlib: example_stdlib.host.o mquickjs_build.host.o
+	$(HOST_CC) $(HOST_LDFLAGS) -o $@ $^
+
+# Generated headers
+mquickjs_atom.h: mqjs_stdlib
+	./mqjs_stdlib -a $(MQJS_BUILD_FLAGS) > $@
+
+mqjs_stdlib.h: mqjs_stdlib
+	./mqjs_stdlib $(MQJS_BUILD_FLAGS) > $@
+
+example_stdlib.h: example_stdlib
+	./example_stdlib $(MQJS_BUILD_FLAGS) > $@
+
+mquickjs.o: mquickjs_atom.h
+mqjs.o: mqjs_stdlib.h
+example.o: example_stdlib.h
+
+# --- Pattern rules ---
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+%.host.o: %.c
+	$(HOST_CC) $(HOST_CFLAGS) -c -o $@ $<
+
+clean:
+	rm -f *.o *.host.o *.d *~ \
+	  mqjs_stdlib mqjs_stdlib.h mquickjs_build_atoms mquickjs_atom.h \
+	  example_stdlib example_stdlib.h \
+	  $(PROGS)
+
+.PHONY: all clean

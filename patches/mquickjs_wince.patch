@@ -1,0 +1,32 @@
+diff --git a/cutils.h b/cutils.h
+index 0000000..1111111 100644
+--- a/cutils.h
++++ b/cutils.h
+@@ -1,3 +1,12 @@
++/* WinCE/CeGCC portability */
++#ifdef _WIN32_WCE
++#include "wince/wince_compat.h"
++/* CeGCC doesn't always provide isatty/usleep/gettimeofday in the same way */
++#define gettimeofday wince_gettimeofday
++#define usleep wince_usleep
++#define isatty wince_isatty
++#endif
++
+diff --git a/mqjs.c b/mqjs.c
+index 0000000..2222222 100644
+--- a/mqjs.c
++++ b/mqjs.c
+@@ -1,6 +1,15 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++
++/* WinCE doesn't have full POSIX terminal control. */
++#ifdef _WIN32_WCE
++#include "wince/wince_compat.h"
++#endif
++
++#ifdef _WIN32_WCE
++/* Disable tty-specific features if upstream uses them */
++#define USE_READLINE 1
++#endif
