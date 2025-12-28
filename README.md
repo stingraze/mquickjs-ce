@@ -1,5 +1,8 @@
-MicroQuickJS
+MicroQuickJS - Windows CE Port (mquickjs-ce)
 ============
+Ported by Tsubasa Kato (@_stingraze on X / Twitter)
+
+Ported using ChatGPT 5.2 Thinking. Needs further testing. Only basic programs has been tested. I think the complex code in test will fail at this stage.
 
 ## Introduction
 
