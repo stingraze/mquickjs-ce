@@ -6,6 +6,14 @@ Ported using ChatGPT 5.2 Thinking. Needs further testing. Only basic programs ha
 
 Needs CeGCC to compile. (9.3.x)
 
+To compile this project:
+
+```
+make -f Makefile.wince clean all
+```
+
+It will make a binary.
+
 ## Introduction
 
 MicroQuickJS (aka. MQuickJS) is a JavaScript engine targeted at
