@@ -12,7 +12,7 @@ To compile this project:
 make -f Makefile.wince clean all
 ```
 
-It will make a binary.
+It will make a binary. (example.exe)
 
 ## Introduction
 
