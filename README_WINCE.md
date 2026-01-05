@@ -1,5 +1,13 @@
 # MQuickJS WinCE (CeGCC) Port Patch Set
 
+This ZIP does **not** include the upstream mquickjs sources. It provides:
+- A **CeGCC/Windows CE** Makefile (`Makefile.wince`)
+- A small **WinCE compatibility layer** (`wince/wince_compat.[ch]`)
+- A minimal **readline replacement** for WinCE (`wince/readline_wince.c`)
+- A **unified diff patch** (`patches/mquickjs_wince.patch`) showing the edits you should apply to upstream.
+
+Why: In this chat environment, I cannot reliably fetch the entire upstream repository to repackage it. If you upload your `mquickjs` source tree (zip/tarball) here, I can apply these changes and return a full patched zip.
+
 ## Target
 - Windows CE .NET 4.1 (ARM)
 - Toolchain: CeGCC (`arm-mingw32ce-gcc`) located at `/home/builder/cegcc/bin`

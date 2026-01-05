@@ -232,6 +232,114 @@ static void js_log_func(void *opaque, const void *buf, size_t buf_len)
     fwrite(buf, 1, buf_len, stdout);
 }
 
+
+#ifdef _WIN32_WCE
+/* --- Encoding support (WinCE): accept UTF-8 (with/without BOM) and Shift_JIS/MS932.
+ * QuickJS expects UTF-8 source internally, so we normalize here.
+ * Also supports UTF-16LE with BOM (common in some editors).
+ */
+static int wince_is_valid_utf8(const uint8_t *s, int len)
+{
+    int i = 0;
+    while (i < len) {
+        uint8_t c = s[i];
+        if (c < 0x80) { i++; continue; }
+        if ((c & 0xE0) == 0xC0) {
+            if (i + 1 >= len) return 0;
+            if ((s[i+1] & 0xC0) != 0x80) return 0;
+            if (c < 0xC2) return 0;
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            if (i + 2 >= len) return 0;
+            if ((s[i+1] & 0xC0) != 0x80 || (s[i+2] & 0xC0) != 0x80) return 0;
+            if (c == 0xE0 && (s[i+1] < 0xA0)) return 0;
+            if (c == 0xED && (s[i+1] >= 0xA0)) return 0;
+            i += 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            if (i + 3 >= len) return 0;
+            if ((s[i+1] & 0xC0) != 0x80 || (s[i+2] & 0xC0) != 0x80 || (s[i+3] & 0xC0) != 0x80) return 0;
+            if (c == 0xF0 && (s[i+1] < 0x90)) return 0;
+            if (c > 0xF4) return 0;
+            if (c == 0xF4 && (s[i+1] > 0x8F)) return 0;
+            i += 4;
+        } else {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static uint8_t *wince_wide_to_utf8(const wchar_t *w, int wlen, int *out_len)
+{
+    int needed = WideCharToMultiByte(CP_UTF8, 0, w, wlen, NULL, 0, NULL, NULL);
+    if (needed <= 0) return NULL;
+    uint8_t *out = (uint8_t*)malloc((size_t)needed + 1);
+    if (!out) return NULL;
+    int written = WideCharToMultiByte(CP_UTF8, 0, w, wlen, (char*)out, needed, NULL, NULL);
+    if (written <= 0) { free(out); return NULL; }
+    out[written] = '\0';
+    if (out_len) *out_len = written;
+    return out;
+}
+
+static uint8_t *wince_convert_to_utf8(const uint8_t *in, int in_len, int *out_len)
+{
+    const uint8_t *p = in;
+    int len = in_len;
+
+    /* UTF-8 BOM */
+    if (len >= 3 && p[0] == 0xEF && p[1] == 0xBB && p[2] == 0xBF) {
+        p += 3; len -= 3;
+        uint8_t *out = (uint8_t*)malloc((size_t)len + 1);
+        if (!out) return NULL;
+        memcpy(out, p, (size_t)len);
+        out[len] = '\0';
+        if (out_len) *out_len = len;
+        return out;
+    }
+
+    /* UTF-16LE BOM */
+    if (len >= 2 && p[0] == 0xFF && p[1] == 0xFE) {
+        p += 2; len -= 2;
+        int wlen = len / 2;
+        wchar_t *wbuf = (wchar_t*)malloc((size_t)(wlen + 1) * sizeof(wchar_t));
+        if (!wbuf) return NULL;
+        memcpy(wbuf, p, (size_t)wlen * 2);
+        wbuf[wlen] = 0;
+        uint8_t *out = wince_wide_to_utf8(wbuf, wlen, out_len);
+        free(wbuf);
+        return out;
+    }
+
+    /* Plain UTF-8 (no BOM) */
+    if (wince_is_valid_utf8(in, in_len)) {
+        uint8_t *out = (uint8_t*)malloc((size_t)in_len + 1);
+        if (!out) return NULL;
+        memcpy(out, in, (size_t)in_len);
+        out[in_len] = '\0';
+        if (out_len) *out_len = in_len;
+        return out;
+    }
+
+    /* Fallback: Shift_JIS / MS932 */
+    {
+        int wneeded = MultiByteToWideChar(932 /* CP932 */, 0, (const char*)in, in_len, NULL, 0);
+        if (wneeded <= 0) return NULL;
+        wchar_t *wbuf = (wchar_t*)malloc((size_t)(wneeded + 1) * sizeof(wchar_t));
+        if (!wbuf) return NULL;
+
+        int wwritten = MultiByteToWideChar(932 /* CP932 */, 0, (const char*)in, in_len, wbuf, wneeded);
+        if (wwritten <= 0) { free(wbuf); return NULL; }
+        wbuf[wwritten] = 0;
+
+        uint8_t *out = wince_wide_to_utf8(wbuf, wwritten, out_len);
+        free(wbuf);
+        return out;
+    }
+}
+#endif /* _WIN32_WCE */
+
+
 static uint8_t *load_file(const char *filename, int *plen)
 {
     FILE *f;
@@ -244,12 +352,31 @@ static uint8_t *load_file(const char *filename, int *plen)
         exit(1);
     }
     fseek(f, 0, SEEK_END);
-    buf_len = ftell(f);
+    buf_len = (int)ftell(f);
     fseek(f, 0, SEEK_SET);
-    buf = malloc(buf_len + 1);
+
+    buf = malloc((size_t)buf_len + 1);
+    if (!buf) {
+        fclose(f);
+        perror("malloc");
+        exit(1);
+    }
     fread(buf, 1, buf_len, f);
-    buf[buf_len] = '\0';
+    buf[buf_len] = ' ';
     fclose(f);
+
+#ifdef _WIN32_WCE
+    {
+        int out_len = 0;
+        uint8_t *utf8 = wince_convert_to_utf8(buf, buf_len, &out_len);
+        if (utf8) {
+            free(buf);
+            buf = utf8;
+            buf_len = out_len;
+        }
+    }
+#endif
+
     if (plen)
         *plen = buf_len;
     return buf;
