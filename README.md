@@ -1,5 +1,18 @@
-MicroQuickJS
+MicroQuickJS - Windows CE Port (mquickjs-ce)
 ============
+Ported by Tsubasa Kato (@_stingraze on X / Twitter) 12/28/2025
+
+Ported using ChatGPT 5.2 Thinking. Needs further testing. Only basic programs has been tested. I think the complex code in test will fail at this stage.
+
+Needs CeGCC to compile. (9.3.x)
+
+To compile this project:
+
+```
+make -f Makefile.wince clean all
+```
+
+It will make a binary. (example.exe)
 
 ## Introduction
 
